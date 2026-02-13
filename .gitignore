@@ -1,5 +1,6 @@
-*.zip
 /build
 /install
 /log
+/Release
+/Backup
 
