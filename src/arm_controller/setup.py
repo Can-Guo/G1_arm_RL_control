@@ -44,6 +44,9 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+
+            # unified control authority server (合并MCB和R键权限管理)
+            'arm_action_authority_server = arm_controller.arm_control_action_authority_server_compiled:main',
             # Action Server
             # 'arm_action_server = arm_controller.arm_control_action_server:main',
             'arm_action_server_compiled = arm_controller.arm_control_action_server_compiled:main',

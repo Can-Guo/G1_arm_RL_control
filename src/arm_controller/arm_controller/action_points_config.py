@@ -56,13 +56,19 @@ class ActionPointsConfig:
                 # 向上两级到 hr_ros2_ws/src/config/
                 os.path.join(script_dir, '../../config/actionpoints.yaml'),
                 
+                # York环境: 从安装目录回溯到工作空间根目录
+                # 安装路径: install/arm_controller/lib/python3.10/site-packages/arm_controller/
+                # 需要回溯: ../../../../../../../../src/config/actionpoints.yaml
+                os.path.join(script_dir, '../../../../../../../src/config/actionpoints.yaml'),
+                
                 # 兼容旧路径 (开发环境备用)
                 os.path.join(script_dir, 'ros2_ws/src/arm_control_interfaces/config/actionpoints.yaml'),
                 os.path.join(script_dir, 'arm_control_interfaces/config/actionpoints.yaml'),
                 os.path.join(script_dir, 'config/actionpoints.yaml'),
                 
-                # 绝对路径 (MCB环境)
+                # 绝对路径 (多环境支持)
                 '/home/sunny/hr_ros2_ws/src/config/actionpoints.yaml',
+                '/home/york/RL_arm_control/src/config/actionpoints.yaml',
                 
                 # 当前目录 (最后备用)
                 os.path.join(script_dir, 'actionpoints.yaml'),
