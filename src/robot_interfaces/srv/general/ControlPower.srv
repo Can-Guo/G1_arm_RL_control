@@ -1,0 +1,9 @@
+# Request
+string task_id      # Task ID
+string object       # Control object (arm/hand)
+string type         # Action type (get/release)
+
+---
+# Response
+string result        # Result (success/failed)
+string error         # Error message

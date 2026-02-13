@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>arm_controller</name>
+  <version>1.0.0</version>
+  <description>G1双臂RL控制器 - ROS2 Action Server集成版</description>
+  
+  <maintainer email="york@unitree.com">York</maintainer>
+  <license>Apache-2.0</license>
+  
+  <author>York</author>
+  <author>Sunny Zhu</author>
+
+  <!-- 构建工具 -->
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <!-- ROS2 核心依赖 -->
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>action_msgs</depend>
+  
+  <!-- 自定义接口依赖 -->
+  <depend>robot_interfaces</depend>
+  
+  <!-- 注意: unitree_hg 和 unitree_api 在独立的 cyclonedds_ws 中管理 -->
+  <!-- 需要在运行前 source ~/RL_arm_control/src/pkg/unitree_ros2/install/setup.bash -->
+
+  <!-- Python 依赖（通过 requirements.txt 管理） -->
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
+  <!-- 测试依赖 -->
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

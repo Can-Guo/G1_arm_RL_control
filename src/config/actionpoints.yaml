@@ -1,0 +1,36 @@
+actionpoints:
+
+  arm_safety:
+    x_l: 0.05
+    y_l: 0.27
+    z_l: 0.71
+    x_r: 0.09
+    y_r: -0.27
+    z_r: 0.72
+  
+  arm_home:
+    x_l: 0.1
+    y_l: 0.3
+    z_l: 0.75
+    x_r: 0.1
+    y_r: -0.3
+    z_r: 0.75
+  
+  arm_open_prepare:
+    x_l: 0.074
+    y_l: 0.445
+    z_l: 0.93
+    x_r: 0.075
+    y_r: -0.45
+    z_r: 0.90
+    high_resolution: 3
+
+  arm_open_prepare_for_box:
+    x_l: 0.3
+    y_l: 0.20
+    z_l: 0.95
+    x_r: 0.3
+    y_r: -0.20
+    z_r: 0.95
+
+

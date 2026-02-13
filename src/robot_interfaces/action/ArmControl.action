@@ -1,0 +1,39 @@
+# ArmControl.action - G1机器人双臂控制Action接口定义
+# 符合MCB协议规范 (Arm_control_protocol.md)
+
+# ========== GOAL (目标) ==========
+# MCB发送的控制指令
+
+string target          # 目标类型: "empty_box" 或 "product_box"
+string action          # 动作类型: "pick"(抓取), "place"(放置), "move"(移动)
+float64 x_l            # 左臂目标位置 X坐标 (米), 范围: [0.0, 0.6]
+float64 y_l            # 左臂目标位置 Y坐标 (米), 范围: [0.0, 0.6]
+float64 z_l            # 左臂目标位置 Z坐标 (米), 范围: [0.55, 1.45]
+float64 x_r            # 右臂目标位置 X坐标 (米), 范围: [0.0, 0.6]
+float64 y_r            # 右臂目标位置 Y坐标 (米), 范围: [-0.6, 0.0]
+float64 z_r            # 右臂目标位置 Z坐标 (米), 范围: [0.55, 1.45]
+int32 high_resolution  # 使用精度模式: 1(高), 2(中), 3(低)
+
+---
+# ========== RESULT (结果) ==========
+# 任务执行完成后返回的结果
+
+string result          # 执行结果: "success"(成功) 或 "failed"(失败)
+string error           # 错误信息（成功时为空字符串）
+float64 x_l            # 左臂最终位置 X坐标
+float64 y_l            # 左臂最终位置 Y坐标
+float64 z_l            # 左臂最终位置 Z坐标
+float64 x_r            # 右臂最终位置 X坐标
+float64 y_r            # 右臂最终位置 Y坐标
+float64 z_r            # 右臂最终位置 Z坐标
+
+---
+# ========== FEEDBACK (反馈) ==========
+# 执行过程中的实时位置反馈 (10Hz频率)
+
+float64 x_l            # 左臂当前位置 X坐标
+float64 y_l            # 左臂当前位置 Y坐标
+float64 z_l            # 左臂当前位置 Z坐标
+float64 x_r            # 右臂当前位置 X坐标
+float64 y_r            # 右臂当前位置 Y坐标
+float64 z_r            # 右臂当前位置 Z坐标
