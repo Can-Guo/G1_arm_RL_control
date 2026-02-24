@@ -481,11 +481,16 @@ class DualArmEnv:
 class RobotBridgeROS2:
     """ROS2 话题接口的机器人桥接器（双臂版本 + Action Server集成）"""
 
-    def __init__(self):
-        """初始化 ROS2 发布者和订阅者"""
+    def __init__(self, env=None):
+        """初始化 ROS2 发布者和订阅者
+        
+        Args:
+            env: DualArmEnv实例，用于同步仿真状态（可选）
+        """
         # === 基础属性（必须先初始化，避免依赖缺失时属性不存在） ===
         self.ok = False
         self._action_mode = False
+        self._env = env  # 保存环境引用，用于同步仿真状态
         
         # === R键本地控制权限管理（新架构：不再通过服务器） ===
         self._manual_control_enabled = False  # R键本地控制开关
@@ -511,15 +516,21 @@ class RobotBridgeROS2:
         self._dynamic_threshold = DISTANCE_THRESHOLD
         self._threshold_lock = threading.Lock()
         
+        # === 真实机器人关节状态管理（用于位置同步） ===
+        self._real_robot_joint_angles = {}  # 真实机器人的关节角度 {motor_idx: angle}
+        self._robot_state_lock = threading.Lock()
+        self._last_lowstate_time = 0.0  # 最后一次收到LowState的时间
+        
         # === ROS2订阅器占位符 ===
         self._left_goal_sub = None
         self._right_goal_sub = None
+        self._lowstate_sub = None
         
         try:
             import rclpy
             from rclpy.node import Node
             from std_msgs.msg import Float64MultiArray, Bool
-            from unitree_hg.msg import LowCmd
+            from unitree_hg.msg import LowCmd, LowState
             
             if not rclpy.ok():
                 rclpy.init()
@@ -581,9 +592,19 @@ class RobotBridgeROS2:
                 10
             )
             
+            # === 新增：订阅真实机器人状态（用于位置同步） ===
+            self._lowstate_sub = self._node.create_subscription(
+                LowState,
+                '/lowstate',
+                self._lowstate_callback,
+                5
+            )
+            
             self._node.get_logger().info("[RobotBridge] ✓ 已订阅authority_server状态:")
             self._node.get_logger().info("  - /g1/arm/mcb_control_authority (MCB权限)")
             self._node.get_logger().info("  - /g1/arm/emergency_stop (急停状态)")
+            self._node.get_logger().info("[RobotBridge] ✓ 已订阅真实机器人状态:")
+            self._node.get_logger().info("  - /lowstate (关节角度，用于位置同步)")
             self._node.get_logger().info("[RobotBridge] ✓ R键控制为本地管理，不经过服务器")
             
             # === 不再创建服务客户端（R键已本地化管理） ===
@@ -708,6 +729,19 @@ class RobotBridgeROS2:
                 return True
         return False
     
+    def _lowstate_callback(self, msg):
+        """订阅真实机器人状态回调（LowState）
+        
+        从LowState消息中提取关节角度并保存，用于后续的位置同步
+        参考：https://support.unitree.com/home/zh/G1_developer/basic_services_interface
+        """
+        with self._robot_state_lock:
+            # 提取双臂关节角度（索引15-28对应双臂14个关节）
+            if hasattr(msg, 'motor_state') and len(msg.motor_state) > 28:
+                for idx in range(15, 29):  # 15-28: 双臂关节
+                    self._real_robot_joint_angles[idx] = msg.motor_state[idx].q
+                self._last_lowstate_time = time.time()
+    
     def _estop_status_callback(self, msg):
         """订阅急停状态回调"""
         with self._estop_lock:
@@ -802,6 +836,102 @@ class RobotBridgeROS2:
         with self._threshold_lock:
             return self._dynamic_threshold
     
+    def sync_real_robot_state_to_sim(self, lock):
+        """将真实机器人的关节状态同步到仿真环境
+        
+        工作流程：
+        1. 从 /lowstate 话题获取真实机器人的关节角度
+        2. 将这些角度更新到仿真环境的 qpos
+        3. 执行 mj_forward 更新物理状态
+        4. 使用仿真的FK计算手掌位置
+        
+        Args:
+            lock: 仿真环境的线程锁
+        
+        Returns:
+            (left_pos, right_pos): 从真实关节角度计算出的手掌位置
+            如果无法同步，返回 (None, None)
+        """
+        if self._env is None:
+            print("[同步警告] 仿真环境引用为空，无法同步")
+            return None, None
+        
+        with self._robot_state_lock:
+            # 检查是否收到过真实机器人状态
+            if not self._real_robot_joint_angles:
+                print("[同步警告] 尚未收到真实机器人状态（/lowstate），无法同步")
+                return None, None
+            
+            # 检查数据是否过期（超过1秒视为过期）
+            if time.time() - self._last_lowstate_time > 1.0:
+                print(f"[同步警告] 真实机器人状态已过期 {time.time() - self._last_lowstate_time:.1f}秒")
+                return None, None
+            
+            # 复制关节角度（避免在lock外部访问）
+            real_joints = self._real_robot_joint_angles.copy()
+        
+        # 同步到仿真环境
+        try:
+            import mujoco as _mj
+            
+            with lock:
+                # 关节名称映射（与JOINTS列表对应）
+                joint_mapping = [
+                    (15, "left_shoulder_pitch_joint"),
+                    (16, "left_shoulder_roll_joint"),
+                    (17, "left_shoulder_yaw_joint"),
+                    (18, "left_elbow_joint"),
+                    (19, "left_wrist_roll_joint"),
+                    (20, "left_wrist_pitch_joint"),
+                    (21, "left_wrist_yaw_joint"),
+                    (22, "right_shoulder_pitch_joint"),
+                    (23, "right_shoulder_roll_joint"),
+                    (24, "right_shoulder_yaw_joint"),
+                    (25, "right_elbow_joint"),
+                    (26, "right_wrist_roll_joint"),
+                    (27, "right_wrist_pitch_joint"),
+                    (28, "right_wrist_yaw_joint"),
+                ]
+                
+                # 更新仿真环境的关节角度
+                sync_count = 0
+                for motor_idx, joint_name in joint_mapping:
+                    if motor_idx in real_joints:
+                        jid = _mj.mj_name2id(self._env.model, _mj.mjtObj.mjOBJ_JOINT, joint_name)
+                        if jid != -1:
+                            qadr = int(self._env.model.jnt_qposadr[jid])
+                            self._env.data.qpos[qadr] = float(real_joints[motor_idx])
+                            sync_count += 1
+                
+                # 更新物理状态
+                _mj.mj_forward(self._env.model, self._env.data)
+                
+                # 使用仿真FK计算手掌位置
+                left_pos = self._env.get_left_palm_pos().copy()
+                right_pos = self._env.get_right_palm_pos().copy()
+                
+                if self.ok:
+                    self._node.get_logger().info(
+                        f"[真实状态同步] ✓ 已同步 {sync_count}/14 个关节到仿真环境"
+                    )
+                    self._node.get_logger().info(
+                        f"[真实状态同步] 计算位置: 左臂={left_pos}, 右臂={right_pos}"
+                    )
+                else:
+                    print(f"[真实状态同步] ✓ 已同步 {sync_count}/14 个关节到仿真环境")
+                    print(f"[真实状态同步] 计算位置: 左臂={left_pos}, 右臂={right_pos}")
+                
+                return left_pos, right_pos
+                
+        except Exception as e:
+            if self.ok:
+                self._node.get_logger().error(f"[真实状态同步] 同步失败: {e}")
+            else:
+                print(f"[真实状态同步] 同步失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return None, None
+    
     def get_external_goals(self):
         """获取外部目标（从Action Server）
         
@@ -888,7 +1018,9 @@ class RobotBridgeROS2:
         特殊处理：左臂第5、7关节镜像右臂对应关节
         - 左臂第5关节（idx=19, left_wrist_roll）= -右臂第5关节（idx=26, right_wrist_roll）
         - 左臂第7关节（idx=21, left_wrist_yaw） = -右臂第7关节（idx=28, right_wrist_yaw）
-        York, 20260210
+        
+        重要：镜像处理后会同步更新仿真环境，确保仿真渲染与真实机器人一致
+        York, 20260210, Updated 20260223
         """
         if not self.ok:
             return
@@ -899,12 +1031,17 @@ class RobotBridgeROS2:
         LEFT_WRIST_YAW = 21    # 左臂第7关节索引
         RIGHT_WRIST_YAW = 28   # 右臂第7关节索引
         
+        mirrored_joints = {}  # 记录被镜像的关节，用于同步仿真
+        
         if RIGHT_WRIST_ROLL in q and LEFT_WRIST_ROLL in q:
             q[LEFT_WRIST_ROLL] = -q[RIGHT_WRIST_ROLL]
+            mirrored_joints[LEFT_WRIST_ROLL] = q[LEFT_WRIST_ROLL]
         
         if RIGHT_WRIST_YAW in q and LEFT_WRIST_YAW in q:
             q[LEFT_WRIST_YAW] = -q[RIGHT_WRIST_YAW]
+            mirrored_joints[LEFT_WRIST_YAW] = q[LEFT_WRIST_YAW]
 
+        # 发送到真实机器人
         for idx, val in q.items():
             if idx >= 35:
                 continue
@@ -915,6 +1052,37 @@ class RobotBridgeROS2:
             self._pub.publish(self._cmd)
         except Exception:
             self.ok = False
+            return
+        
+        # ✅ 同步镜像处理后的关节角到仿真环境（确保仿真与真实机器人一致）
+        if self._env is not None and mirrored_joints:
+            try:
+                import mujoco as _mj
+                
+                # 更新仿真中的镜像关节
+                for motor_idx, angle_val in mirrored_joints.items():
+                    # 根据电机索引找到对应的关节名
+                    joint_name = None
+                    if motor_idx == LEFT_WRIST_ROLL:
+                        joint_name = "left_wrist_roll_joint"
+                    elif motor_idx == LEFT_WRIST_YAW:
+                        joint_name = "left_wrist_yaw_joint"
+                    
+                    if joint_name:
+                        jid = _mj.mj_name2id(self._env.model, _mj.mjtObj.mjOBJ_JOINT, joint_name)
+                        if jid != -1:
+                            qadr = int(self._env.model.jnt_qposadr[jid])
+                            self._env.data.qpos[qadr] = float(angle_val)
+                
+                # 更新仿真物理状态
+                _mj.mj_forward(self._env.model, self._env.data)
+                
+            except Exception as e:
+                # 同步失败不影响机器人控制，只记录警告
+                if hasattr(self, '_node'):
+                    self._node.get_logger().warn(f"[send_qpos] 仿真同步失败: {e}")
+                else:
+                    print(f"[send_qpos] 仿真同步失败: {e}")
 
     def shutdown(self):
         """关闭 ROS2 资源"""
@@ -1075,10 +1243,39 @@ def run_curses(stdscr, env, left_policy, right_policy, robot: RobotBridgeROS2,
         
         # MCB授权事件：自动启用机器人输出
         if not last_mcb_status and current_mcb_status:
+            # ✅ 关键安全逻辑：从真实机器人读取关节角度，同步到仿真环境
+            # 方案：
+            # 1. 从 /lowstate 话题获取真实机器人关节角度
+            # 2. 将关节角度更新到仿真环境 qpos
+            # 3. 使用FK计算手掌位置
+            # 4. 将仿真环境移动到真实机器人位置
+            print("\n[MCB授权] MCB已授权，开始同步真实机器人状态...")
+            
+            # 尝试从真实机器人同步状态
+            left_pos, right_pos = robot.sync_real_robot_state_to_sim(lock)
+            
+            if left_pos is not None and right_pos is not None:
+                # 成功同步真实状态
+                print("[MCB授权] ✓ 已从真实机器人同步关节角度到仿真")
+                print(f"[MCB授权] 真实机器人位置: 左臂={left_pos}, 右臂={right_pos}")
+            else:
+                # 无法同步，回退到使用仿真位置
+                print("[MCB授权] ⚠ 无法同步真实状态，使用仿真位置")
+                with lock:
+                    left_pos = env.get_left_palm_pos()
+                    right_pos = env.get_right_palm_pos()
+            
+            # 更新目标位置为同步后的位置
+            left_goal[:] = left_pos
+            right_goal[:] = right_pos
+            env.set_left_goal(left_pos)
+            env.set_right_goal(right_pos)
+            
+            # 然后才开启机器人输出
             control_state['out_robot'] = robot.ok
-            print("\n[MCB授权] MCB已授权，自动启用机器人输出")
+            print("[MCB授权] ✓ 已同步位置，自动启用机器人输出")
             try:
-                stdscr.addstr(10, 0, "✓ MCB已授权，机器人输出已自动启用" + " " * 30)
+                stdscr.addstr(10, 0, "✓ MCB已授权，已同步真实机器人状态，输出已启用" + " " * 20)
                 stdscr.refresh()
             except Exception:
                 pass
@@ -1162,9 +1359,32 @@ def run_curses(stdscr, env, left_policy, right_policy, robot: RobotBridgeROS2,
                 
                 # R键启用/禁用时，自动控制机器人输出
                 if new_status:
+                    # ✅ 关键安全逻辑：从真实机器人读取关节角度，同步到仿真环境
+                    print("[R键] 开始同步真实机器人状态...")
+                    
+                    # 尝试从真实机器人同步状态
+                    left_pos, right_pos = robot.sync_real_robot_state_to_sim(lock)
+                    
+                    if left_pos is not None and right_pos is not None:
+                        # 成功同步真实状态
+                        print("[R键] ✓ 已从真实机器人同步关节角度到仿真")
+                        print(f"[R键] 真实机器人位置: 左臂={left_pos}, 右臂={right_pos}")
+                    else:
+                        # 无法同步，回退到使用仿真位置
+                        print("[R键] ⚠ 无法同步真实状态，使用仿真位置")
+                        with lock:
+                            left_pos = env.get_left_palm_pos()
+                            right_pos = env.get_right_palm_pos()
+                    
+                    # 更新目标位置为同步后的位置
+                    left_goal[:] = left_pos
+                    right_goal[:] = right_pos
+                    env.set_left_goal(left_pos)
+                    env.set_right_goal(right_pos)
+                    
                     # R键启用：自动开启机器人输出（忽略MCB状态）
                     control_state['out_robot'] = robot.ok
-                    print(f"[R键] 已自动开启机器人输出 (忽略MCB状态)")
+                    print(f"[R键] ✓ 已同步位置并开启机器人输出")
                 else:
                     # R键禁用：自动关闭机器人输出
                     control_state['out_robot'] = False
@@ -1514,8 +1734,8 @@ def main() -> None:
     # 创建环境
     env = DualArmEnv(render=True)
 
-    # 创建 ROS2 桥接器
-    robot = RobotBridgeROS2()
+    # 创建 ROS2 桥接器（传入env引用，用于同步仿真状态）
+    robot = RobotBridgeROS2(env=env)
 
     # 创建控制状态字典（使用可变对象在函数间共享状态）
     control_state = {
