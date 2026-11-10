@@ -10,7 +10,7 @@
   • 需要先编译 arm_control_interfaces 包
   • 运行前执行: source ~/RL_arm_control/ros2_ws/install/setup.bash
 
-作者: York & Sunny Zhu
+作者: York
 日期: 2025-11-13
 协议: 参见 Arm_control_protocol.md
 """

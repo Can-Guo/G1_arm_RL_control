@@ -6,6 +6,9 @@
 面向**搬运快递箱**作业：给定左右手目标三维笛卡尔坐标，强化学习策略输出关节增量，把双臂送到目标位置，
 同时保持「拍手姿势」——掌心朝身体侧方、手掌平面垂直于地面。
 
+> **原仓库说明**：本仓库基于 [Sentdex/unitree_g1_vibes](https://github.com/Sentdex/unitree_g1_vibes) 重新修改而来。
+> [unitree_g1_vibes](https://github.com/Sentdex/unitree_g1_vibes) 是原仓库；当前仓库在该仓库基础上改写，用于 Unitree G1 双臂强化学习到达控制，并扩展了 MuJoCo 训练、ROS2 实机下控与 MCB 交互链路。
+
 ---
 
 ## 目录
@@ -530,7 +533,7 @@ stateDiagram-v2
 ## 13. 作者
 
 - **作者**：York GUO ｜ 邮箱：1739950387@qq.com
-- **协作**：Sunny Zhu（MCB 协议与交付对接）
+- **原仓库**：[Sentdex/unitree_g1_vibes](https://github.com/Sentdex/unitree_g1_vibes)。该仓库是本项目的原仓库，本仓库基于它重新修改而来。
 - 包元数据声明许可：Apache-2.0（见 `src/arm_controller/package.xml`）
 
 ---

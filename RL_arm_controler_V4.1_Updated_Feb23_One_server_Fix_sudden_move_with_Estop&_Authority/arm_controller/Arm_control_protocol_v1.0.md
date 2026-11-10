@@ -1,5 +1,5 @@
 Arm Control Protocol from MCB Calling to Robot.
-By sunny Zhu, 20251104
+日期: 20251104
 
 描述：from MCB to robot control for arm.
 

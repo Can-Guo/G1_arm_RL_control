@@ -32,7 +32,7 @@
 环境变量：
   ARM_CONTROL_ACTION_NAME - Action名称（默认: /arm_control）
 
-作者: York & Sunny Zhu
+作者: York
 版本: 2.0 - 专业测试版
 日期: 2025-11-14
 """

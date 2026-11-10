@@ -9,7 +9,6 @@
   <license>Apache-2.0</license>
   
   <author>York</author>
-  <author>Sunny Zhu</author>
 
   <!-- 构建工具 -->
   <buildtool_depend>ament_python</buildtool_depend>
