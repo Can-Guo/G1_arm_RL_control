@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  This file stores predefined 3D paths for the robot's arms.
+  Each path is a sequence of points (waypoints) in a 3D coordinate system.
+  The coordinate system convention (e.g., world frame, torso frame) should be
+  handled by the parsing script. It is recommended to use the robot's base/world frame.
+
+  Structure:
+  <robot_paths>
+    <arm name="left|right">
+      <path id="unique_path_name" description="Optional description">
+        <point x="..." y="..." z="..." />
+        ...
+      </path>
+    </arm>
+  </robot_paths>
+-->
+<robot_paths>
+
+  <!-- ==================== -->
+  <!-- Paths for the Left Arm -->
+  <!-- ==================== -->
+  <arm name="left">
+    <path id="left_path_1" description="Example: A simple square motion in the XY plane">
+      <!-- Add or edit points for this path below -->
+      <point x="0.4" y="0.3" z="0.8" />
+      <point x="0.5" y="0.3" z="0.8" />
+      <point x="0.5" y="0.4" z="0.8" />
+      <point x="0.4" y="0.4" z="0.8" />
+      <point x="0.4" y="0.3" z="0.8" />
+    </path>
+
+    <path id="left_path_2" description="Example: A vertical line motion">
+      <!-- Add or edit points for this path below -->
+      <point x="0.45" y="0.2" z="0.7" />
+      <point x="0.45" y="0.2" z="0.8" />
+      <point x="0.45" y="0.2" z="0.9" />
+    </path>
+
+    <!-- You can add more paths for the left arm here by copying a <path> block -->
+
+  </arm>
+
+
+  <!-- ===================== -->
+  <!-- Paths for the Right Arm -->
+  <!-- ===================== -->
+  <arm name="right">
+    <path id="right_prepare_carry_box_0" description="prepare to carry box path 0">
+      <!-- Add or edit points for this path below -->
+      <point x="0.05" y="-0.31" z="0.69" />
+      <point x="0.11" y="-0.33" z="0.75" />
+      <point x="0.13" y="-0.27" z="0.75" />
+      <point x="0.13" y="-0.31" z="0.79" />
+      <point x="0.13" y="-0.33" z="0.81" />
+      <point x="0.13" y="-0.37" z="0.85" />
+      <point x="0.19" y="-0.31" z="0.85" />
+      <point x="0.19" y="-0.25" z="0.85" />
+      <point x="0.19" y="-0.21" z="0.85" />
+    </path>
+
+    <path id="right_prepare_carry_box_1" description="prepare to carry box path 1">
+      <!-- Add or edit points for this path below -->
+      <point x="0.05" y="-0.4" z="0.75" />
+      <point x="0.05" y="-0.5" z="0.75" />
+    </path>
+
+    <!-- You can add more paths for the right arm here by copying a <path> block -->
+
+  </arm>
+
+</robot_paths>
