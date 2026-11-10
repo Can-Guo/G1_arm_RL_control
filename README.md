@@ -190,11 +190,22 @@ python g1_dual_arm_policy_controller.py
 
 | 按键 | 作用 |
 |---|---|
-| `W` `S` / `A` `D` / `Q` `E` | 左臂 X 前进后退 / Y 左右 / Z 升降 |
-| `I` `K` / `J` `L` / `U` `O` | 右臂 X 前进后退 / Y 左右 / Z 升降 |
-| `R` | 切换机器人输出（仿真 → 实机，谨慎开启） |
+| `W` / `S` | 左臂 **Z 轴** + / − |
+| `A` / `D` | 左臂 **Y 轴** + / − |
+| `Q` / `E` | 左臂 **X 轴** + / − |
+| `I` / `K` | 右臂 **Z 轴** + / − |
+| `J` / `L` | 右臂 **Y 轴** + / − |
+| `U` / `O` | 右臂 **X 轴** + / − |
+| `R` | 手动控制总开关（开启时先从 `/lowstate` 同步真实关节角到仿真，再打开机器人输出） |
 | `T` | 切换仿真输出 |
 | `M` | 切换手动 / Action 模式 |
+| `Z` | 手动触发 / 解除急停 |
+| `[` / `]` | 控制周期 ×2（变慢）/ ×0.5（变快） |
+| `<` `,` / `>` `.` | 动作幅度 ×0.5 / ×2 |
+| `X` / `Esc` | 退出 |
+
+> 表为部署控制器 `g1_dual_arm_policy_controller_ROS2_v3.py:1295-1400` 的实际键位。
+> 根目录的 SDK2 直连脚本键位不同（`r`/`t` 切左右臂的机器人/仿真输出），以各自 `--help` 与源码为准。
 
 验证时重点看：到达时间是否稳定、轨迹是否平滑、末端距离是否单调下降、姿态是否翻腕、是否贴近躯干。
 
@@ -349,8 +360,8 @@ reward  = -5.0 * dist                      # 距离项（主导）
 | `/g1/left_arm/goal`、`/g1/right_arm/goal` | `std_msgs/Float64MultiArray` | 服务器 → 控制器 | 左/右臂目标 `[x, y, z]` |
 | `/g1/left_arm/position`、`/g1/right_arm/position` | `std_msgs/Float64MultiArray` | 控制器 → 服务器 | 当前位置反馈（10 Hz） |
 | `/g1/arm/distance_threshold` | `std_msgs/Float64MultiArray` | 服务器 → 控制器 | 动态距离阈值 |
-| `/arm_sdk` | `unitree_api/msg/LowCmd` | 控制器 → 机器人 | 关节下控（50 Hz，`kp=50.0`、`kd=1.5`） |
-| `/lowstate` | `unitree_api/msg/LowState` | 机器人 → 控制器 | 真实关节状态（idx 15–28） |
+| `/arm_sdk` | `unitree_hg/msg/LowCmd` | 控制器 → 机器人 | 关节下控（50 Hz，`kp=50.0`、`kd=1.5`） |
+| `/lowstate` | `unitree_hg/msg/LowState` | 机器人 → 控制器 | 真实关节状态（idx 15–28） |
 | 控制权状态 | `std_msgs/Bool` | 服务器 → 广播 | 权限/急停状态（10 Hz） |
 
 ### 6.3 权限与急停逻辑
@@ -390,7 +401,7 @@ stateDiagram-v2
 |---|---|---|
 | `arm_safety` | 0.05, 0.27, 0.71 | 0.09, −0.27, 0.72 |
 | `arm_home` | 0.10, 0.30, 0.75 | 0.10, −0.30, 0.75 |
-| `arm_open_prepare` | 0.074, 0.445, 0.93 | 0.075, −0.45, 0.90 |
+| `arm_open_prepare` | 0.074, 0.445, 0.93 | 0.075, −0.45, 0.90（带 `high_resolution: 3`，即判定阈值 9 cm） |
 | `arm_open_prepare_for_box` | 0.30, 0.20, 0.95 | 0.30, −0.20, 0.95 |
 
 测试客户端操作：`1–4` 跳转预设点、`P x_l y_l z_l x_r y_r z_r [精度]` 自定义、`T` 超时测试、`B` 批量测试、`H` 帮助。
@@ -415,7 +426,9 @@ stateDiagram-v2
 | `ppo_left_5M_Feb10_Cons01/` | 41 个 | 拍手约束调参版本 |
 | `default_author/` | `ppo_g1_left_53178k.zip` | 交付用单模型 |
 
-每个模型的训练终端记录另存为 `0_readme_*.txt`（含完整配置与 fps），可直接核对超参。
+每个模型的训练终端记录另存为 `0_readme_*.txt`：内容是**训练命令行、fps（约 3100–3400）、每 25 万步的 checkpoint 路径**，可据此核对超参与实际步数；**不含 reward / 成功率曲线**——那些在 `runs/g1_arm_reach/*/RL_0/events.out.tfevents.*` 里，用 TensorBoard 看。
+
+> 这些日志也暴露了一个事实：**实际训练用的是 `--num-envs 256`**，而脚本默认值是 16。复现实验时别直接用默认值。
 
 ---
 
@@ -464,8 +477,9 @@ stateDiagram-v2
 | **左右臂独立训练** | `-lArm` / `-rArm` 分别训练、部署时分别加载。`--right-arm` 目前更像"实验区分 + 路径命名"信号，二次开发需确认它真的传进环境构造函数。 |
 | **超时值文档不一致** | 旧手册/测试客户端写 30 s，统一服务器代码是 10.0 s。**以代码为准**。 |
 | **launch 文件指向旧服务器** | `dual_arm_control.launch.py` 启动的是旧版 `arm_action_server_compiled`（3 终端架构）；统一服务器需手动 `ros2 run arm_controller arm_action_authority_server`。 |
+| **手册里的 `ros2 run` 名字不存在** | 现行手册写 `ros2 run arm_controller arm_control_action_authority_server_compiled`，但 `setup.py` 注册的入口是 **`arm_action_authority_server`**（指向同一个文件 `arm_control_action_authority_server_compiled.py`）。照手册敲会得到 `No executable found`。 |
 | **`SUNNY_README_latest.md` 已过时** | 它描述的是 v3.1 三终端架构（超时 30 s），与当前统一服务器实现不符；当前生效文档是 `control_power_&_emergency_updated_20260223.md`。 |
-| **Action 名不一致** | 测试客户端默认 `/action_arm`，服务器注册名 `action_arm`，不带前缀可能匹配不上。 |
+| **Action 名的前缀差异** | 服务器注册 `action_arm`，测试客户端默认 `/action_arm`。默认根命名空间下两者解析到同一个名字，**并不冲突**；只有设置了 namespace 才需要统一。历史文档曾把它当成"名字不匹配"来排查。 |
 | **`--sim-only` 默认值是字符串** | `g1_arm_policy_controller.py` 中 `default="true"`（字符串而非布尔），按真值语义判断时需注意。 |
 | **`__init__.py` 依赖旧环境** | 包级 `DISTANCE_THRESHOLD` 从早期 `g1_arm_rl_env` 导入；若只改 `g1_arm_rl_env_IhKP`，服务器侧阈值会不同步（当前两者都是 0.03）。 |
 | **占位/缺失文件** | `dual_arm_controller_wrapper.py` 为空文件；`diagnose_authority` 只有 `.pyc` 没有源码。 |
